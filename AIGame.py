@@ -13,6 +13,8 @@ class Game:
         else:
             self.seed = None
 
+        self.game_won = False  # Check for win condition
+
         # Initialize Pyxel window
         pyxel.init(160, 160)
         pyxel.title = "AI Grid Game"
@@ -70,11 +72,11 @@ class Game:
                 self.terrain[(x, y)] = terrain_type
 
     def update(self):
-        # Check if game is over
-        if self.score <= 0:
+        if self.game_won or self.score <= 0:
             if pyxel.btnp(pyxel.KEY_R):
                 self.reset_game()
-            return  # Skip updates if game is over
+            return  # Skip updates if the game is over or won
+
         # Update visible tiles
         self.update_visibility()
         # Handle algorithm switching
@@ -86,6 +88,9 @@ class Game:
         # AI controls the player
         if pyxel.frame_count % 5 == 0:  # Adjust speed as needed
             self.ai_move()
+        # Check for win condition
+        self.check_win_condition()
+
 
     
     def reset_game(self):
@@ -95,6 +100,9 @@ class Game:
 
         # Reset score
         self.score = 100
+
+        # Reset game_won flag
+        self.game_won = False
 
         # Re-seed the random number generator if seed is provided
         if self.seed is not None:
@@ -151,6 +159,16 @@ class Game:
                 if self.score <= 0:
                     self.game_over()
 
+    def check_win_condition(self):
+        # Check if all items have been collected
+        all_items_collected = len(self.items) == 0
+        # Check if the entire map has been explored
+        all_tiles_explored = len(self.visible_tiles) == self.grid_width * self.grid_height
+        # If both conditions are met, set game_won to True
+        if all_items_collected and all_tiles_explored:
+            self.game_won = True
+
+
     def update_visibility(self):
         x, y = self.player_x, self.player_y
         for dx in range(-1, 2):
@@ -188,7 +206,7 @@ class Game:
                 pyxel.circ(x * self.tile_size + 8, y * self.tile_size + 8, 4, color)
 
         # Draw the player if the game is not over
-        if self.score > 0:
+        if self.score > 0 and not self.game_won:
             pyxel.rect(self.player_x * self.tile_size, self.player_y * self.tile_size, self.tile_size, self.tile_size, 9)
 
         # Draw the score
@@ -196,17 +214,21 @@ class Game:
         # Draw the current algorithm
         pyxel.text(5, 15, f"Algorithm: {self.algorithm.upper()}", 7)
 
-        # Display Game Over message if score is zero or below
+        # Display game over message if score is zero or below
         if self.score <= 0:
             pyxel.text(50, 80, "Game Over!", pyxel.frame_count % 16)
             pyxel.text(40, 90, "Press 'R' to Restart", 8)
 
+        # Display win message if the game is won
+        if self.game_won:
+            pyxel.text(50, 80, "You Win!", pyxel.frame_count % 16)
+            pyxel.text(40, 90, "Press 'R' to Restart", 8)
+
     def game_over(self):
-        # Optionally, you can implement additional game over logic here
-        pass  # No need to stop Pyxel; just handle game over state
+        pass  
 
     def ai_move(self):
-        if self.score <= 0:
+        if self.score <= 0 or self.game_won:
             return  # Do not move if the game is over
         # Find all visible positive items
         positive_items = [pos for pos, item in self.items.items() if item == 'positive' and pos in self.visible_tiles]
