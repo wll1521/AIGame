@@ -237,7 +237,8 @@ class Game:
             pyxel.text(40, 90, "Press 'R' to Restart", 8)
 
     def game_over(self):
-        pass  
+        # Optionally, you can implement additional game over logic here
+        pass  # No need to stop Pyxel; just handle game over state
 
     def ai_move(self):
         if self.score <= 0 or self.game_won:
