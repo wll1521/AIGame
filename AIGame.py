@@ -39,12 +39,18 @@ class Game:
         self.movement_costs = {
             'normal': 1,
             'mud': 10,
-            'water': 50
+            'water': 50,
+            'unknown': 1
         }
 
         # Visibility map
         self.visible_tiles = set()
         self.update_visibility()
+
+        # Pathfinding and targetting
+        self.current_target = None
+        self.current_path = []
+        self.path_index = 0
 
         # Set the default algorithm
         self.algorithm = 'bfs'  # Options: 'astar' or 'bfs'
@@ -86,7 +92,7 @@ class Game:
         if pyxel.btnp(pyxel.KEY_R):
             self.reset_game()
         # AI controls the player
-        if pyxel.frame_count % 5 == 0:  # Adjust speed as needed
+        if pyxel.frame_count % 5 == 0:  # Adjust speed as needed 25 slow, 5 fast
             self.ai_move()
         # Check for win condition
         self.check_win_condition()
@@ -168,6 +174,12 @@ class Game:
         if all_items_collected and all_tiles_explored:
             self.game_won = True
 
+    def get_terrain(self, position):
+        if position in self.visible_tiles:
+            return self.terrain.get(position, 'normal')
+        else:
+            return 'unknown'  # Represent unknown terrain
+
 
     def update_visibility(self):
         x, y = self.player_x, self.player_y
@@ -229,65 +241,84 @@ class Game:
 
     def ai_move(self):
         if self.score <= 0 or self.game_won:
-            return  # Do not move if the game is over
+            return  # Do not move if the game is over or won
+
+        # If the AI has a path to follow, continue along it
+        if self.current_path and self.path_index < len(self.current_path):
+            next_step = self.current_path[self.path_index]
+            dx = next_step[0] - self.player_x
+            dy = next_step[1] - self.player_y
+            self.move_player(dx, dy)
+            self.path_index += 1
+            # Check if we've reached the target
+            if (self.player_x, self.player_y) == self.current_target:
+                self.current_target = None
+                self.current_path = []
+                self.path_index = 0
+            return  # Movement done for this turn
+
+        # No current path or target, select a new one
         # Find all visible positive items
-        positive_items = [pos for pos, item in self.items.items() if item == 'positive' and pos in self.visible_tiles]
+        positive_items = [pos for pos in self.items.keys() if pos in self.visible_tiles]
         if positive_items:
             # Find the closest visible positive item
-            closest_item = min(positive_items, key=lambda pos: self.heuristic((self.player_x, self.player_y), pos))
-            # Choose the pathfinding algorithm
-            print(f"Using {self.algorithm.upper()} algorithm to find path to {closest_item}")
-            if self.algorithm == 'astar':
-                path = self.astar((self.player_x, self.player_y), closest_item)
-            elif self.algorithm == 'bfs':
-                path = self.bfs((self.player_x, self.player_y), closest_item)
-            else:
-                path = None
-            #print path
-            if path:
-                print(f"Path found: {path}")
-            else:
-                print("No path found.")
-            if path and len(path) > 1:
-                next_step = path[1]
-                dx = next_step[0] - self.player_x
-                dy = next_step[1] - self.player_y
-                self.move_player(dx, dy)
+            closest_item = min(
+                positive_items,
+                key=lambda pos: self.heuristic((self.player_x, self.player_y), pos)
+            )
+            self.current_target = closest_item
+            self.plan_path_to_current_target()
         else:
             # No visible positive items, proceed to explore
             self.explore()
 
+
     def explore(self):
-        if self.score <= 0:
-            return  # Do not explore if the game is over
+        if self.score <= 0 or self.game_won:
+            return  # Do not explore if the game is over or won
+
         # Find all unexplored tiles
-        all_unexplored = [(x, y) for x in range(self.grid_width) for y in range(self.grid_height) if (x, y) not in self.visible_tiles]
+        all_unexplored = [
+            (x, y) for x in range(self.grid_width) for y in range(self.grid_height)
+            if (x, y) not in self.visible_tiles
+        ]
+
         if not all_unexplored:
             return  # All tiles have been explored
 
         # Find the closest unexplored tile
-        closest_unexplored = min(all_unexplored, key=lambda pos: self.heuristic((self.player_x, self.player_y), pos))
+        closest_unexplored = min(
+            all_unexplored,
+            key=lambda pos: self.heuristic((self.player_x, self.player_y), pos)
+        )
 
-        # Choose the pathfinding algorithm
+        # Set the current target and plan path
+        self.current_target = closest_unexplored
+        self.plan_path_to_current_target()
+
+    def plan_path_to_current_target(self):
+        if self.current_target is None:
+            return  # No target to plan path to
+
+        start_pos = (self.player_x, self.player_y)
         if self.algorithm == 'astar':
-            path = self.astar_to_unexplored((self.player_x, self.player_y), closest_unexplored)
+            path = self.astar(start_pos, self.current_target)
         elif self.algorithm == 'bfs':
-            path = self.bfs_to_unexplored((self.player_x, self.player_y), closest_unexplored)
+            path = self.bfs(start_pos, self.current_target)
         else:
             path = None
 
         if path and len(path) > 1:
-            next_step = path[1]
-            dx = next_step[0] - self.player_x
-            dy = next_step[1] - self.player_y
-            self.move_player(dx, dy)
+            # Exclude the current position from the path
+            self.current_path = path[1:]
+            self.path_index = 0
         else:
-            # No path found, move randomly
-            possible_moves = self.get_neighbors((self.player_x, self.player_y))
-            next_step = random.choice(possible_moves)
-            dx = next_step[0] - self.player_x
-            dy = next_step[1] - self.player_y
-            self.move_player(dx, dy)
+            # No path found or already at the target
+            self.current_target = None
+            self.current_path = []
+            self.path_index = 0
+
+
 
     def get_neighbors(self, node):
         x, y = node
@@ -321,7 +352,7 @@ class Game:
             if current == goal:
                 return self.reconstruct_path(came_from, current)
             for neighbor in self.get_neighbors(current):
-                terrain = self.terrain.get(neighbor, 'normal')
+                terrain = self.get_terrain(neighbor)
                 cost = self.movement_costs.get(terrain, 1)
                 tentative_g_score = g_score[current] + cost
                 if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
@@ -343,7 +374,7 @@ class Game:
                 return self.reconstruct_path(came_from, current)
             for neighbor in self.get_neighbors(current):
                 # Assume unknown terrain is 'normal' for exploration purposes
-                terrain = self.terrain.get(neighbor, 'normal')
+                terrain = self.get_terrain(neighbor)
                 cost = self.movement_costs.get(terrain, 1)
                 tentative_g_score = g_score[current] + cost
                 if neighbor not in g_score or tentative_g_score < g_score[neighbor]:
