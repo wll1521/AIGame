@@ -86,7 +86,7 @@ class Game:
         if pyxel.btnp(pyxel.KEY_R):
             self.reset_game()
         # AI controls the player
-        if pyxel.frame_count % 5 == 0:  # Adjust speed as needed
+        if pyxel.frame_count % 5 == 0:  # Adjust speed as needed 25 slow, 5 fast
             self.ai_move()
         # Check for win condition
         self.check_win_condition()
